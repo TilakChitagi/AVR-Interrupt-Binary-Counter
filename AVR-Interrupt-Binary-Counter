@@ -1,0 +1,69 @@
+/*
+ * Description: 4-bit binary counter (0-15) triggered by a tactile switch.
+ * Hardware: 
+ * - LEDs on PD2, PD3, PD4, PD5 (Representing Bits 0, 1, 2, 3)
+ * - Tactile switch on PD6 (using internal pull-up)
+ * Logic: Increments count on button press using Pin Change Interrupt (PCINT22).
+ */
+
+#define F_CPU 16000000UL
+#include <avr/io.h>
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+// volatile is used because 'count' is modified inside an ISR
+volatile uint8_t count = 0;
+
+int main(void)
+{
+    // Set PD2, PD3, PD4, and PD5 as outputs for the 4-bit binary display
+    DDRD |= (1 << PD2) | (1 << PD3) | (1 << PD4) | (1 << PD5);
+
+    // Set PD6 as input for the tactile switch
+    DDRD &= ~(1 << PD6);
+    // Enable internal pull-up resistor on PD6
+    PORTD |= (1 << PD6);   
+
+    // --- PCINT Configuration ---
+    // PCIE2 enables interrupts for the PCINT[23:16] group (Port D)
+    PCICR |= (1 << PCIE2);
+    // PCINT22 corresponds specifically to pin PD6
+    PCMSK2 |= (1 << PCINT22);
+
+    // Enable Global Interrupts
+    sei();
+
+    while (1)
+    {
+        // Main loop is empty; all logic happens in the ISR
+    }
+}
+
+// Interrupt Service Routine for Pin Change Interrupt Group 2
+ISR(PCINT2_vect)
+{
+    // Check if the button is pressed (logic low)
+    if (!(PIND & (1 << PD6)))   
+    {
+        _delay_ms(50); // Software debounce delay
+
+        // Verify the button is still pressed after the bounce
+        if (!(PIND & (1 << PD6)))
+        {
+            count++;        // Increment count
+            count &= 0x0F;  // Mask to keep count between 0 and 15 (4 bits)
+
+            /* * DISPLAY LOGIC:
+             * This specific code uses Active-Low logic for LEDs.
+             * 1. Clear the LED bits (Turn all ON)
+             * 2. Calculate the bit pattern and turn specific LEDs OFF
+             */
+            PORTD |= (1 << PD2) | (1 << PD3) | (1 << PD4) | (1 << PD5);
+            PORTD &= ~((count & 0x0F) << 2);
+
+            // Wait for button release to prevent multiple increments
+            while (!(PIND & (1 << PD6)));  
+            _delay_ms(50); // Debounce for release
+        }
+    }
+}
